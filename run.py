@@ -1,6 +1,30 @@
 import os, sys, serial, select
+import serial.tools.list_ports
 from utils.machine import stream_gcode
 from dotenv import load_dotenv
+
+
+def list_serial_ports():
+    ports = list(serial.tools.list_ports.comports())
+    if not ports:
+        print("No serial ports found.")
+        sys.exit(1)
+    print("Available serial ports:")
+    for i, port in enumerate(ports):
+        print(f"{i + 1}: {port.device} - {port.description}")
+    return ports
+
+
+def select_serial_port(ports):
+    while True:
+        try:
+            choice = int(input("Select a port number: "))
+            if 1 <= choice <= len(ports):
+                return ports[choice - 1].device
+            else:
+                print("Invalid choice. Please try again.")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
 
 
 def process_file(file_path, ser):
@@ -30,8 +54,11 @@ def main():
         print(f"Error: Path '{path}' does not exist.")
         sys.exit(1)
 
+    ports = list_serial_ports()
+    selected_port = select_serial_port(ports)
+
     try:
-        ser = serial.Serial(os.getenv("GRBL_PORT_PATH"), int(os.getenv("BAUD_RATE")))
+        ser = serial.Serial(selected_port, int(os.getenv("BAUD_RATE")))
 
         # stream_gcode(ser, "./gcode/homing.gcode", False)
         stream_gcode(ser, "./gcode/home.gcode", False)
