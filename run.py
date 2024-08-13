@@ -32,6 +32,9 @@ def main():
 
     try:
         ser = serial.Serial(os.getenv("GRBL_PORT_PATH"), int(os.getenv("BAUD_RATE")))
+
+        # stream_gcode(ser, "./gcode/homing.gcode", False)
+        stream_gcode(ser, "./gcode/home.gcode", False)
     except serial.SerialException as e:
         print(f"Error opening serial port: {e}")
         sys.exit(1)
