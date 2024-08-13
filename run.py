@@ -43,11 +43,17 @@ def main():
         print("Loop mode activated. Press 'q' and Enter at any time to quit.")
 
     while True:
-        if os.path.isfile(path):
+        if os.path.isfile(path) and (
+            path.endswith(".gcode") or path.endswith(".ngc") or path.endswith(".nc")
+        ):
             process_file(path, ser)
         elif os.path.isdir(path):
             for file in os.listdir(path):
-                if file.endswith(".gcode"):
+                if (
+                    file.endswith(".gcode")
+                    or file.endswith(".ngc")
+                    or file.endswith(".nc")
+                ):
                     file_path = os.path.join(path, file)
                     process_file(file_path, ser)
                     if is_quit_pressed():
