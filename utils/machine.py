@@ -40,16 +40,6 @@ def stream_gcode(ser, gcode_path, wait_for_completion=True):
                 break
             Event().wait(0.1)  # Wait a bit before checking again
 
-    def wait_for_movement_completion(ser, cleaned_line):
-        start_time = time.time()
-        while (time.time() - start_time) < 20:
-            ser.reset_input_buffer()
-            command = str.encode("?" + "\n")
-            ser.write(command)
-            grbl_out = ser.readline().strip().decode("utf-8")
-            if grbl_out.startswith("MPos") or grbl_out.startswith("WPos"):
-                return
-
     with open(gcode_path, "r") as file:
         send_wake_up(ser)
         count_ok = 0
@@ -62,8 +52,6 @@ def stream_gcode(ser, gcode_path, wait_for_completion=True):
                 wait_for_buffer(ser)
                 command = str.encode(line + "\n")
                 ser.write(command)  # Send g-code
-                if wait_for_completion:
-                    wait_for_movement_completion(ser, cleaned_line)
 
                 grbl_out = ser.readline()
 
