@@ -25,22 +25,18 @@ def stream_gcode(ser, gcode_path, wait_for_completion=True):
         command = str.encode("?" + "\n")
         ser.write(command)
         grbl_out = ser.readline().strip().decode("utf-8")
-        print(grbl_out)
         if grbl_out.startswith("<") and grbl_out.endswith(">"):
             status_params = grbl_out[1:-1].split("|")
             for param in status_params:
-                if param.startswith("Bf:"):
-                    planner_buffer, rx_buffer = map(int, param[3:].split(","))
-                    return planner_buffer, rx_buffer
-        return None, None
+                if param.lower() == "idle":
+                    return True
+        return False
 
     def wait_for_buffer(ser):
-        MAX_BUFFER_SIZE = 15  # Update this to your GRBL's planner buffer size
-        HALF_BUFFER_SIZE = MAX_BUFFER_SIZE // 2
         while True:
-            planner_buffer, _ = get_buffer_status(ser)
-            print(planner_buffer)
-            if planner_buffer is not None and planner_buffer >= HALF_BUFFER_SIZE:
+            buffer_ready = get_buffer_status(ser)
+
+            if buffer_ready:
                 break
             Event().wait(0.1)  # Wait a bit before checking again
 
