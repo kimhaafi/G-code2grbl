@@ -22,6 +22,7 @@ def stream_gcode(ser, gcode_path, max_commands):
         command = str.encode("?" + "\n")
         ser.write(command)
         grbl_out = ser.readline().strip().decode("utf-8")
+        print(grbl_out)
         if grbl_out.startswith("<") and grbl_out.endswith(">"):
             status_params = grbl_out[1:-1].split("|")
             for param in status_params:
@@ -46,7 +47,7 @@ def stream_gcode(ser, gcode_path, max_commands):
                 if count_ok % max_commands == 0:
                     Event().wait(0.1)
                 print("Sending gcode:" + str(cleaned_line))
-                # wait_for_buffer(ser)
+                wait_for_buffer(ser)
                 command = str.encode(line + "\n")
                 ser.write(command)  # Send g-code
 
