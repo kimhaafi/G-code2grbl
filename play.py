@@ -7,8 +7,7 @@ from dotenv import load_dotenv
 import json
 import signal
 import time
-import threading
-import queue
+import multiprocessing
 
 load_dotenv()
 
@@ -17,14 +16,12 @@ PROGRESS_FILE = "gcode_progress.json"
 
 class GCodeRunner:
     def __init__(self):
-        self.ser = None
-        self.running = False
-        self.stop_requested = False
-        self.current_file_index = 0
-        self.files = []
-        self.gcode_thread = None
-        self.current_file = None
-        self.command_queue = queue.Queue()
+        self.running = multiprocessing.Value("b", False)
+        self.stop_requested = multiprocessing.Value("b", False)
+        self.current_file_index = multiprocessing.Value("i", 0)
+        self.files = multiprocessing.Manager().list()
+        self.gcode_process = None
+        self.current_file = multiprocessing.Manager().Value(str, "")
         self.port = None
         self.baud_rate = int(os.getenv("BAUD_RATE"))
 
@@ -32,75 +29,90 @@ class GCodeRunner:
         if os.path.exists(PROGRESS_FILE):
             with open(PROGRESS_FILE, "r") as f:
                 progress = json.load(f)
-            self.files = progress.get("files", [])
-            self.current_file_index = progress.get("current_index", 0)
+            self.files.extend(progress.get("files", []))
+            self.current_file_index.value = progress.get("current_index", 0)
         else:
             print("No progress file found. Please create a gcode_progress.json file.")
             sys.exit(1)
 
     def save_progress(self):
-        progress = {"files": self.files, "current_index": self.current_file_index}
+        progress = {
+            "files": list(self.files),
+            "current_index": self.current_file_index.value,
+        }
         with open(PROGRESS_FILE, "w") as f:
             json.dump(progress, f)
 
-    def connect_to_port(self):
+    def get_port(self):
         ports = list(serial.tools.list_ports.comports())
         if not ports:
             print("No serial ports found.")
             sys.exit(1)
+        return ports[int(os.getenv("PORT")) - 1].device
 
-        self.port = ports[int(os.getenv("PORT")) - 1].device
-        self.connect()
-
-    def connect(self):
+    def gcode_processing(
+        self,
+        port,
+        baud_rate,
+        files,
+        current_file_index,
+        running,
+        stop_requested,
+        current_file,
+    ):
+        ser = None
         try:
-            self.ser = serial.Serial(self.port, self.baud_rate)
-            print(f"Connected to {self.port}")
+            ser = serial.Serial(port, baud_rate)
+            print(f"Connected to {port}")
+
+            while running.value and not stop_requested.value:
+                if current_file_index.value < len(files):
+                    file = files[current_file_index.value]
+                    current_file.value = file
+                    print(f"Processing: {file}")
+                    try:
+                        stream_gcode(ser, file)
+                        print(f"Finished processing: {file}")
+                        with current_file_index.get_lock():
+                            current_file_index.value += 1
+                        self.save_progress()
+                    except serial.SerialException as e:
+                        print(f"Serial communication error: {e}")
+                        break
+                else:
+                    with current_file_index.get_lock():
+                        current_file_index.value = 0  # Reset for next loop
+                time.sleep(0.1)  # Small delay to prevent busy-waiting
+
         except serial.SerialException as e:
             print(f"Error opening serial port: {e}")
-            return False
-        return True
-
-    def reconnect(self):
-        print("Attempting to reconnect...")
-        for _ in range(5):  # Try to reconnect 5 times
-            if self.connect():
-                return True
-            time.sleep(2)
-        return False
-
-    def gcode_processing_thread(self):
-        while self.running and not self.stop_requested:
-            if self.current_file_index < len(self.files):
-                file = self.files[self.current_file_index]
-                self.current_file = file
-                print(f"Processing: {file}")
-                try:
-                    stream_gcode(self.ser, file)
-                    print(f"Finished processing: {file}")
-                    self.current_file_index += 1
-                    self.save_progress()
-                except serial.SerialException as e:
-                    print(f"Serial communication error: {e}")
-                    if not self.reconnect():
-                        print("Failed to reconnect. Stopping processing.")
-                        break
-            else:
-                self.current_file_index = 0  # Reset for next loop
-            time.sleep(0.1)  # Small delay to prevent busy-waiting
-
-        self.running = False
-        print("G-code processing stopped.")
+        finally:
+            running.value = False
+            if ser:
+                ser.close()
+            print("G-code processing stopped.")
 
     def start_processing(self):
-        self.running = True
-        self.gcode_thread = threading.Thread(target=self.gcode_processing_thread)
-        self.gcode_thread.start()
+        self.running.value = True
+        self.port = self.get_port()
+        self.gcode_process = multiprocessing.Process(
+            target=self.gcode_processing,
+            args=(
+                self.port,
+                self.baud_rate,
+                self.files,
+                self.current_file_index,
+                self.running,
+                self.stop_requested,
+                self.current_file,
+            ),
+        )
+        self.gcode_process.start()
 
     def stop_processing(self):
-        self.stop_requested = True
-        if self.gcode_thread:
-            self.gcode_thread.join()
+        self.stop_requested.value = True
+        if self.gcode_process:
+            self.gcode_process.join()
         self.save_progress()
 
     def signal_handler(self, signum, frame):
@@ -116,27 +128,23 @@ def main():
         print("No files to process.")
         return
 
-    runner.connect_to_port()
-
     # Set up signal handler for graceful stopping
     signal.signal(signal.SIGTERM, runner.signal_handler)
 
     try:
         runner.start_processing()
-        while runner.running and not runner.stop_requested:
+        while runner.running.value and not runner.stop_requested.value:
             time.sleep(1)
     except KeyboardInterrupt:
         print("Keyboard interrupt received. Stopping...")
         runner.stop_processing()
     except Exception as e:
         print(f"An error occurred: {e}")
-    finally:
-        if runner.ser:
-            runner.ser.close()
 
-    if runner.stop_requested:
-        print(f"Stopped. Last file processed: {runner.current_file}")
+    if runner.stop_requested.value:
+        print(f"Stopped. Last file processed: {runner.current_file.value}")
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()  # Necessary for Windows
     main()
