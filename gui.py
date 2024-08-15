@@ -192,9 +192,9 @@ class GCodeRunner:
     def process_files(self, files):
         while self.running and not self.stop_requested:
             for i in range(self.current_file_index, len(files)):
+                self.current_file_index = i
                 if self.stop_requested:
                     break
-                self.current_file_index = i
                 file = files[i]
                 self.queue.put(("status", f"Processing: {file}"))
                 stream_gcode(self.ser, file)
