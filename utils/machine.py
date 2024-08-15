@@ -5,7 +5,7 @@ BAUD_RATE = os.getenv("BAUD_RATE")
 MAX_COMMANDS = os.getenv("MAX_COMMANDS")
 
 
-def stream_gcode(ser, gcode_path, wait_for_completion=True):
+def stream_gcode(ser, gcode_path):
     def remove_comment(string):
         if string.find(";") == -1:
             return string

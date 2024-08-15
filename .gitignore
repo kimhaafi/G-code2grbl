@@ -3,3 +3,5 @@ venv
 repopack-output.txt
 
 *pycache*
+
+gcode_progress.json
