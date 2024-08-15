@@ -2,7 +2,7 @@ import time, os
 from threading import Event
 
 BAUD_RATE = os.getenv("BAUD_RATE")
-MAX_COMMANDS = os.getenv("MAX_COMMANDS")
+MAX_COMMANDS = int(os.getenv("MAX_COMMANDS"))
 
 
 def stream_gcode(ser, gcode_path):
