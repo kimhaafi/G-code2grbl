@@ -1,5 +1,4 @@
 import time
-import serial
 from threading import Event
 
 
