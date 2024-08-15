@@ -26,19 +26,31 @@ class BezierCurve:
         return (x, y)
 
 
+class Line:
+    def __init__(self, curves, start_feedrate, end_feedrate, interpolation):
+        self.curves = curves
+        self.start_feedrate = start_feedrate
+        self.end_feedrate = end_feedrate
+        self.interpolation = interpolation
+
+
 class GCodePainter:
     def __init__(self, master):
         self.master = master
-        self.master.title("G-code Painter with Bézier Curves")
-        self.master.geometry("1000x700")
+        self.master.title(
+            "G-code Painter with Bézier Curves and Interpolated Feedrates"
+        )
+        self.master.geometry("1200x800")
 
         self.canvas_width_mm = 100
         self.canvas_height_mm = 100
-        self.points = []
-        self.curves = []
-        self.current_curve = None
+        self.lines = []
+        self.current_line = []
         self.dragging = None
         self.drawing_line = False
+
+        self.z_up = 5
+        self.z_down = 0
 
         self.create_widgets()
 
@@ -51,6 +63,7 @@ class GCodePainter:
         left_frame = ttk.Frame(main_frame)
         left_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
+        # Canvas size inputs
         size_frame = ttk.Frame(left_frame)
         size_frame.grid(row=0, column=0, pady=5)
 
@@ -66,24 +79,66 @@ class GCodePainter:
         )
         set_size_button.grid(row=1, column=0, pady=5)
 
+        # Z height inputs
+        z_frame = ttk.Frame(left_frame)
+        z_frame.grid(row=2, column=0, pady=5)
+
+        ttk.Label(z_frame, text="Z-up (mm):").grid(row=0, column=0)
+        self.z_up_entry = ttk.Entry(z_frame, width=10)
+        self.z_up_entry.insert(0, str(self.z_up))
+        self.z_up_entry.grid(row=0, column=1)
+
+        ttk.Label(z_frame, text="Z-down (mm):").grid(row=1, column=0)
+        self.z_down_entry = ttk.Entry(z_frame, width=10)
+        self.z_down_entry.insert(0, str(self.z_down))
+        self.z_down_entry.grid(row=1, column=1)
+
+        set_z_button = ttk.Button(
+            left_frame, text="Set Z Heights", command=self.set_z_heights
+        )
+        set_z_button.grid(row=3, column=0, pady=5)
+
         self.start_line_button = ttk.Button(
             left_frame, text="Start Line", command=self.start_line
         )
-        self.start_line_button.grid(row=2, column=0, pady=5)
+        self.start_line_button.grid(row=4, column=0, pady=5)
+
+        # Feedrate inputs for ending a line
+        feedrate_frame = ttk.Frame(left_frame)
+        feedrate_frame.grid(row=5, column=0, pady=5)
+
+        ttk.Label(feedrate_frame, text="Start Feedrate:").grid(row=0, column=0)
+        self.start_feedrate_entry = ttk.Entry(feedrate_frame, width=10)
+        self.start_feedrate_entry.insert(0, "1000")
+        self.start_feedrate_entry.grid(row=0, column=1)
+
+        ttk.Label(feedrate_frame, text="End Feedrate:").grid(row=1, column=0)
+        self.end_feedrate_entry = ttk.Entry(feedrate_frame, width=10)
+        self.end_feedrate_entry.insert(0, "1000")
+        self.end_feedrate_entry.grid(row=1, column=1)
+
+        ttk.Label(feedrate_frame, text="Interpolation:").grid(row=2, column=0)
+        self.interpolation_var = tk.StringVar(value="linear")
+        self.interpolation_combo = ttk.Combobox(
+            feedrate_frame,
+            textvariable=self.interpolation_var,
+            values=["linear", "exponential", "logarithmic"],
+        )
+        self.interpolation_combo.grid(row=2, column=1)
 
         self.end_line_button = ttk.Button(
             left_frame, text="End Line", command=self.end_line, state=tk.DISABLED
         )
-        self.end_line_button.grid(row=3, column=0, pady=5)
+        self.end_line_button.grid(row=6, column=0, pady=5)
 
         self.canvas = tk.Canvas(left_frame, width=600, height=600, bg="white")
-        self.canvas.grid(row=4, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.canvas.grid(row=7, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         self.canvas.bind("<Button-1>", self.on_canvas_click)
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
 
         left_frame.columnconfigure(0, weight=1)
-        left_frame.rowconfigure(4, weight=1)
+        left_frame.rowconfigure(7, weight=1)
 
         right_frame = ttk.Frame(main_frame)
         right_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=10)
@@ -113,17 +168,29 @@ class GCodePainter:
         try:
             self.canvas_width_mm = float(self.width_entry.get())
             self.canvas_height_mm = float(self.height_entry.get())
-            self.points.clear()
-            self.curves.clear()
-            self.current_curve = None
+            self.lines.clear()
+            self.current_line.clear()
             self.redraw_canvas()
         except ValueError:
             messagebox.showerror(
                 "Invalid Input", "Please enter numeric values for width and height."
             )
 
+    def set_z_heights(self):
+        try:
+            self.z_up = float(self.z_up_entry.get())
+            self.z_down = float(self.z_down_entry.get())
+            messagebox.showinfo(
+                "Z Heights Set", f"Z-up: {self.z_up} mm\nZ-down: {self.z_down} mm"
+            )
+        except ValueError:
+            messagebox.showerror(
+                "Invalid Input", "Please enter numeric values for Z heights."
+            )
+
     def start_line(self):
         self.drawing_line = True
+        self.current_line.clear()
         self.start_line_button.config(state=tk.DISABLED)
         self.end_line_button.config(state=tk.NORMAL)
 
@@ -131,63 +198,90 @@ class GCodePainter:
         self.drawing_line = False
         self.start_line_button.config(state=tk.NORMAL)
         self.end_line_button.config(state=tk.DISABLED)
-        self.current_curve = None
+        if self.current_line:
+            try:
+                start_feedrate = float(self.start_feedrate_entry.get())
+                end_feedrate = float(self.end_feedrate_entry.get())
+                interpolation = self.interpolation_var.get()
+                self.lines.append(
+                    Line(self.current_line, start_feedrate, end_feedrate, interpolation)
+                )
+                self.current_line = []
+                self.redraw_canvas()
+            except ValueError:
+                messagebox.showerror(
+                    "Invalid Input", "Please enter numeric values for feedrates."
+                )
 
     def on_canvas_click(self, event):
-        if not self.drawing_line:
-            return
+        x_mm, y_mm = self.pixel_to_mm(event.x, event.y)
 
-        x_mm = event.x / self.canvas.winfo_width() * self.canvas_width_mm
-        y_mm = (
-            (self.canvas.winfo_height() - event.y)
-            / self.canvas.winfo_height()
-            * self.canvas_height_mm
-        )
-
-        if self.current_curve is None:
-            self.current_curve = BezierCurve(
-                (x_mm, y_mm), (x_mm, y_mm), (x_mm, y_mm), (x_mm, y_mm)
-            )
+        if self.drawing_line:
+            if not self.current_line or self.current_line[-1].end != (x_mm, y_mm):
+                if self.current_line:
+                    start = self.current_line[-1].end
+                else:
+                    start = (x_mm, y_mm)
+                end = (x_mm, y_mm)
+                control1 = (
+                    start[0] + (end[0] - start[0]) / 3,
+                    start[1] + (end[1] - start[1]) / 3,
+                )
+                control2 = (
+                    start[0] + 2 * (end[0] - start[0]) / 3,
+                    start[1] + 2 * (end[1] - start[1]) / 3,
+                )
+                self.current_line.append(BezierCurve(start, end, control1, control2))
         else:
-            self.curves.append(self.current_curve)
-            self.current_curve = BezierCurve(
-                self.current_curve.end, (x_mm, y_mm), (x_mm, y_mm), (x_mm, y_mm)
-            )
+            # Check if we're clicking on a control point
+            for line in self.lines:
+                for curve in line.curves:
+                    if self.is_point_near(x_mm, y_mm, curve.control1):
+                        self.dragging = (curve, "control1")
+                        break
+                    elif self.is_point_near(x_mm, y_mm, curve.control2):
+                        self.dragging = (curve, "control2")
+                        break
+                if self.dragging:
+                    break
+
+            # Check current_line separately
+            if not self.dragging:
+                for curve in self.current_line:
+                    if self.is_point_near(x_mm, y_mm, curve.control1):
+                        self.dragging = (curve, "control1")
+                        break
+                    elif self.is_point_near(x_mm, y_mm, curve.control2):
+                        self.dragging = (curve, "control2")
+                        break
 
         self.redraw_canvas()
 
     def on_drag(self, event):
-        if not self.drawing_line or self.current_curve is None:
-            return
+        x_mm, y_mm = self.pixel_to_mm(event.x, event.y)
 
-        x_mm = event.x / self.canvas.winfo_width() * self.canvas_width_mm
-        y_mm = (
-            (self.canvas.winfo_height() - event.y)
-            / self.canvas.winfo_height()
-            * self.canvas_height_mm
-        )
-
-        if self.dragging is None:
-            dx = x_mm - self.current_curve.end[0]
-            dy = y_mm - self.current_curve.end[1]
-            self.current_curve.control1 = (
-                self.current_curve.start[0] + dx / 3,
-                self.current_curve.start[1] + dy / 3,
+        if self.dragging:
+            curve, point = self.dragging
+            if point == "control1":
+                curve.control1 = (x_mm, y_mm)
+            elif point == "control2":
+                curve.control2 = (x_mm, y_mm)
+            self.redraw_canvas()
+        elif self.drawing_line and self.current_line:
+            self.current_line[-1].end = (x_mm, y_mm)
+            self.current_line[-1].control2 = (
+                self.current_line[-1].start[0]
+                + 2 * (x_mm - self.current_line[-1].start[0]) / 3,
+                self.current_line[-1].start[1]
+                + 2 * (y_mm - self.current_line[-1].start[1]) / 3,
             )
-            self.current_curve.control2 = (
-                self.current_curve.end[0] - dx / 3,
-                self.current_curve.end[1] - dy / 3,
-            )
-            self.current_curve.end = (x_mm, y_mm)
-        elif self.dragging == "control1":
-            self.current_curve.control1 = (x_mm, y_mm)
-        elif self.dragging == "control2":
-            self.current_curve.control2 = (x_mm, y_mm)
-
-        self.redraw_canvas()
+            self.redraw_canvas()
 
     def on_release(self, event):
         self.dragging = None
+
+    def is_point_near(self, x, y, point, threshold=5):
+        return math.hypot(x - point[0], y - point[1]) < threshold
 
     def redraw_canvas(self):
         self.canvas.delete("all")
@@ -197,13 +291,14 @@ class GCodePainter:
             0, 0, self.canvas.winfo_width() - 1, self.canvas.winfo_height() - 1
         )
 
-        # Draw curves
-        for curve in self.curves:
-            self.draw_bezier_curve(curve)
+        # Draw all lines
+        for line in self.lines:
+            for curve in line.curves:
+                self.draw_bezier_curve(curve)
 
-        # Draw current curve
-        if self.current_curve:
-            self.draw_bezier_curve(self.current_curve)
+        # Draw current line
+        for curve in self.current_line:
+            self.draw_bezier_curve(curve)
 
     def draw_bezier_curve(self, curve):
         start = self.mm_to_pixel(curve.start)
@@ -213,24 +308,26 @@ class GCodePainter:
 
         # Draw curve
         points = [self.mm_to_pixel(curve.point_at(t / 100)) for t in range(101)]
-        self.canvas.create_line(points, fill="blue", smooth=True)
+        self.canvas.create_line(points, fill="blue", smooth=True, width=2)
 
         # Draw control points and lines
         self.canvas.create_line(start, control1, fill="gray", dash=(2, 2))
         self.canvas.create_line(end, control2, fill="gray", dash=(2, 2))
         self.canvas.create_oval(
-            control1[0] - 3,
-            control1[1] - 3,
-            control1[0] + 3,
-            control1[1] + 3,
+            control1[0] - 5,
+            control1[1] - 5,
+            control1[0] + 5,
+            control1[1] + 5,
             fill="green",
+            outline="black",
         )
         self.canvas.create_oval(
-            control2[0] - 3,
-            control2[1] - 3,
-            control2[0] + 3,
-            control2[1] + 3,
+            control2[0] - 5,
+            control2[1] - 5,
+            control2[0] + 5,
+            control2[1] + 5,
             fill="green",
+            outline="black",
         )
 
         # Draw end points
@@ -248,31 +345,114 @@ class GCodePainter:
         )
         return (x_pixel, y_pixel)
 
+    def pixel_to_mm(self, x_pixel, y_pixel):
+        x_mm = x_pixel / self.canvas.winfo_width() * self.canvas_width_mm
+        y_mm = (
+            (self.canvas.winfo_height() - y_pixel)
+            / self.canvas.winfo_height()
+            * self.canvas_height_mm
+        )
+        return (x_mm, y_mm)
+
     def generate_gcode(self):
         gcode = "G21 ; Set units to millimeters\n"
         gcode += "G90 ; Use absolute coordinates\n"
-        gcode += "G0 Z5 ; Lift the pen/tool\n"
+        gcode += f"G0 Z{self.z_up:.2f} F{max(line.start_feedrate for line in self.lines):.2f} ; Lift the pen/tool\n"
 
-        for i, curve in enumerate(self.curves):
-            if i == 0:
-                gcode += f"G0 X{curve.start[0]:.2f} Y{curve.start[1]:.2f} ; Move to starting point\n"
-                gcode += "G0 Z0 ; Lower the pen/tool\n"
+        for i, line in enumerate(self.lines):
+            gcode += f"G0 X{line.curves[0].start[0]:.2f} Y{line.curves[0].start[1]:.2f} F{line.start_feedrate:.2f} ; Move to starting point of line {i+1}\n"
+            gcode += f"G0 Z{self.z_down:.2f} ; Lower the pen/tool\n"
 
-            gcode += self.curve_to_gcode(curve)
+            total_length = sum(self.curve_length(curve) for curve in line.curves)
+            current_length = 0
 
-        gcode += "G0 Z5 ; Lift the pen/tool\n"
-        gcode += "G0 X0 Y0 ; Return to origin\n"
+            for curve in line.curves:
+                curve_gcode, curve_length = self.curve_to_gcode(
+                    curve,
+                    line.start_feedrate,
+                    line.end_feedrate,
+                    current_length / total_length,
+                    (current_length + self.curve_length(curve)) / total_length,
+                    line.interpolation,
+                )
+                gcode += curve_gcode
+                current_length += curve_length
+
+            gcode += f"G0 Z{self.z_up:.2f} ; Lift the pen/tool\n"
+
+        gcode += f"G0 X0 Y0 F{max(line.end_feedrate for line in self.lines):.2f} ; Return to origin\n"
 
         self.gcode_output.delete(1.0, tk.END)
         self.gcode_output.insert(tk.END, gcode)
 
-    def curve_to_gcode(self, curve, segments=10):
-        gcode = ""
+    def curve_to_gcode(
+        self, curve, start_feedrate, end_feedrate, start_t, end_t, interpolation
+    ):
+        # Convert Bézier curve to circular arc
+        center, radius, start_angle, end_angle, direction = self.bezier_to_arc(curve)
+
+        progress = (
+            start_t + end_t
+        ) / 2  # Use middle of the curve for feedrate calculation
+        if interpolation == "linear":
+            feedrate = start_feedrate + (end_feedrate - start_feedrate) * progress
+        elif interpolation == "exponential":
+            feedrate = start_feedrate * (end_feedrate / start_feedrate) ** progress
+        elif interpolation == "logarithmic":
+            feedrate = start_feedrate + (end_feedrate - start_feedrate) * math.log(
+                1 + 9 * progress
+            ) / math.log(10)
+
+        # Generate G-code for the arc
+        if direction == 1:
+            gcode = f"G02 X{curve.end[0]:.4f} Y{curve.end[1]:.4f} I{center[0] - curve.start[0]:.4f} J{center[1] - curve.start[1]:.4f} F{feedrate:.2f} ; Clockwise arc\n"
+        else:
+            gcode = f"G03 X{curve.end[0]:.4f} Y{curve.end[1]:.4f} I{center[0] - curve.start[0]:.4f} J{center[1] - curve.start[1]:.4f} F{feedrate:.2f} ; Counterclockwise arc\n"
+
+        return gcode, self.arc_length(radius, start_angle, end_angle)
+
+    def bezier_to_arc(self, curve):
+        # Calculate the midpoint of the Bézier curve
+        mid = curve.point_at(0.5)
+
+        # Calculate the center of the circular arc
+        center_x = 2 * mid[0] - 0.5 * (curve.start[0] + curve.end[0])
+        center_y = 2 * mid[1] - 0.5 * (curve.start[1] + curve.end[1])
+        center = (center_x, center_y)
+
+        # Calculate the radius
+        radius = math.hypot(center[0] - curve.start[0], center[1] - curve.start[1])
+
+        # Calculate start and end angles
+        start_angle = math.atan2(curve.start[1] - center[1], curve.start[0] - center[0])
+        end_angle = math.atan2(curve.end[1] - center[1], curve.end[0] - center[0])
+
+        # Determine the direction (clockwise or counterclockwise)
+        direction = (
+            1
+            if (curve.control1[0] - curve.start[0]) * (curve.control1[1] - curve.end[1])
+            - (curve.control1[1] - curve.start[1]) * (curve.control1[0] - curve.end[0])
+            > 0
+            else -1
+        )
+
+        return center, radius, start_angle, end_angle, direction
+
+    def arc_length(self, radius, start_angle, end_angle):
+        angle = abs(end_angle - start_angle)
+        if angle > math.pi:
+            angle = 2 * math.pi - angle
+        return radius * angle
+
+    def curve_length(self, curve, segments=100):
+        length = 0
+        last_point = curve.start
         for i in range(1, segments + 1):
             t = i / segments
             point = curve.point_at(t)
-            gcode += f"G1 X{point[0]:.2f} Y{point[1]:.2f} ; Bézier curve point\n"
-        return gcode
+            length += math.hypot(point[0] - last_point[0], point[1] - last_point[1])
+            last_point = point
+        return length
 
     def save_gcode(self):
         gcode = self.gcode_output.get(1.0, tk.END)

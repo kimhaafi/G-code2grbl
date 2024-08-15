@@ -164,7 +164,6 @@ class GCodeRunner:
         self.queue.put(
             ("status", "Stop requested. Waiting for current file to finish...")
         )
-        self.save_progress()
 
     def on_continue(self):
         if not self.ser:
@@ -194,6 +193,7 @@ class GCodeRunner:
             for i in range(self.current_file_index, len(files)):
                 self.current_file_index = i
                 if self.stop_requested:
+                    self.save_progress()
                     break
                 file = files[i]
                 self.queue.put(("status", f"Processing: {file}"))
