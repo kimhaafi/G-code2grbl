@@ -21,7 +21,14 @@ def stream_gcode(ser, gcode_path, max_commands=8):
         ser.reset_input_buffer()
         ser.write(b"?")
         grbl_out = ser.readline().strip().decode("utf-8")
-        return grbl_out.startswith("<") and "Idle" in grbl_out
+        if grbl_out.startswith("<"):
+            parts = grbl_out.split("|")
+            for part in parts:
+                if part.startswith("Bf:"):
+                    buffer_info = part.split(":")[1].split(",")
+                    available_buffer_slots = int(buffer_info[1])
+                    return available_buffer_slots > 0
+        return False
 
     def wait_for_buffer(ser):
         while not get_buffer_status(ser):
