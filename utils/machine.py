@@ -46,7 +46,7 @@ def stream_gcode(ser, gcode_path, max_commands):
                 if count_ok % max_commands == 0:
                     Event().wait(0.1)
                 print("Sending gcode:" + str(cleaned_line))
-                wait_for_buffer(ser)
+                # wait_for_buffer(ser)
                 command = str.encode(line + "\n")
                 ser.write(command)  # Send g-code
 
