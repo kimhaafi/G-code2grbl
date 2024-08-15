@@ -71,7 +71,7 @@ class GCodeRunner:
                     current_file.value = file
                     print(f"Processing: {file}")
                     try:
-                        stream_gcode(ser, file)
+                        stream_gcode(ser, file, int(os.getenv("MAX_COMMANDS")))
                         print(f"Finished processing: {file}")
                         with current_file_index.get_lock():
                             current_file_index.value += 1

@@ -1,11 +1,8 @@
 import time, os
 from threading import Event
 
-BAUD_RATE = os.getenv("BAUD_RATE")
-MAX_COMMANDS = int(os.getenv("MAX_COMMANDS"))
 
-
-def stream_gcode(ser, gcode_path):
+def stream_gcode(ser, gcode_path, max_commands):
     def remove_comment(string):
         if string.find(";") == -1:
             return string
@@ -46,7 +43,7 @@ def stream_gcode(ser, gcode_path):
         for line in file:
             cleaned_line = remove_eol_chars(remove_comment(line))
             if cleaned_line:  # checks if string is empty
-                if count_ok % MAX_COMMANDS == 0:
+                if count_ok % max_commands == 0:
                     Event().wait(0.1)
                 print("Sending gcode:" + str(cleaned_line))
                 wait_for_buffer(ser)

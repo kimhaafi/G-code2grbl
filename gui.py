@@ -38,7 +38,7 @@ class GCodeProcessor(multiprocessing.Process):
                 try:
                     file = self.file_queue.get(timeout=1)
                     self.status_queue.put(("status", f"Processing: {file}"))
-                    stream_gcode(ser, file)
+                    stream_gcode(ser, file, int(os.getenv("MAX_COMMANDS")))
                     self.file_queue.task_done()
                 except queue.Empty:
                     if self.loop_flag.value and not self.file_queue.empty():

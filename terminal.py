@@ -87,7 +87,7 @@ class GCodeTerminal:
                 self.current_file = file
                 print(f"Processing: {file}")
                 try:
-                    stream_gcode(self.ser, file)
+                    stream_gcode(self.ser, file, int(os.getenv("MAX_COMMANDS")))
                     print(f"Finished processing: {file}")
                     self.current_file_index += 1
                     self.save_progress()
