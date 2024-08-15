@@ -56,6 +56,7 @@ def stream_gcode(ser, gcode_path):
                 grbl_out = ser.readline()
 
                 grbl_response = grbl_out.strip().decode("utf-8")
+                print(grbl_response)
                 if line.startswith("G") or "$H" in line:
                     while grbl_response != "ok":
                         ser.write(command)  # Send g-code
