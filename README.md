@@ -11,13 +11,14 @@ G-code2grbl is a Python-based tool for parsing G-code and sending commands to ma
 - Automatic port detection and selection
 - Progress tracking and resumable operations
 - Looping capability for repeated tasks
+- Bézier curve to G-code conversion tool
 
 ## Requirements
 
 - Python 3.x
 - pyserial
 - python-dotenv
-- PyQt6 (for GUI version)
+- tkinter (for GUI version)
 
 ## Installation
 
@@ -56,16 +57,20 @@ The GUI allows you to:
 - Start, stop, and continue G-code streaming
 - Enable looping for repeated operations
 
-### Command-line Version
+### Terminal Version
 
 To run the command-line version:
 
 ```
-python terminal.py <file_or_folder_path> [loop]
+python terminal.py
 ```
 
-- `<file_or_folder_path>`: Path to a single G-code file or a folder containing G-code files
-- `[loop]`: Optional parameter to enable looping mode
+This interactive terminal allows you to:
+
+- Add and remove G-code files
+- List current G-code files
+- Start and stop processing
+- Manage serial port connection
 
 ### Standalone G-code Player
 
@@ -77,6 +82,21 @@ python play.py
 
 This version uses a `gcode_progress.json` file to track progress and allow for resumable operations.
 
+### Bézier Curve to G-code Converter
+
+To run the Bézier curve to G-code conversion tool:
+
+```
+python create_gcode_tool.py
+```
+
+This GUI tool allows you to:
+
+- Draw Bézier curves
+- Convert curves to G-code
+- Adjust feedrates and interpolation
+- Save generated G-code
+
 ## Configuration
 
 Update the `.env` file with your specific settings:
@@ -84,6 +104,12 @@ Update the `.env` file with your specific settings:
 - `BAUD_RATE`: Set the baud rate for serial communication
 - `MAX_COMMANDS`: Set the maximum number of commands to send at once
 - `MAX_BUFFER_SIZE`: Set the maximum buffer size for the GRBL controller
+- `PORT`: Set the port number for serial communication
+
+## Utility Scripts
+
+- `list_ports.py`: Lists available serial ports
+- `utils/machine.py`: Contains utility functions for G-code streaming
 
 ## Contributing
 
@@ -91,7 +117,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT License - Open source
+This project is open-source and available under the MIT License.
 
 ## Acknowledgements
 
