@@ -47,7 +47,7 @@ def stream_gcode(ser, gcode_path):
             cleaned_line = remove_eol_chars(remove_comment(line))
             if cleaned_line:  # checks if string is empty
                 print("Sending gcode:" + str(cleaned_line))
-                # wait_for_buffer(ser)
+                wait_for_buffer(ser)
                 command = str.encode(line + "\n")
                 ser.write(command)  # Send g-code
 
