@@ -20,6 +20,7 @@ def stream_gcode(ser, gcode_path, max_commands=8):
         ser.reset_input_buffer()
         ser.write(b"?")
         grbl_out = ser.readline().strip().decode("utf-8")
+        print(grbl_out)
         if grbl_out.startswith("<"):
             parts = grbl_out.split("|")
             for part in parts:
