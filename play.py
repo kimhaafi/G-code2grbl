@@ -74,7 +74,11 @@ class GCodeRunner:
                         stream_gcode(ser, file)
                         print(f"Finished processing: {file}")
                         with current_file_index.get_lock():
-                            current_file_index.value += 1
+                            current_file_index.value = (
+                                current_file_index.value + 1
+                                if current_file_index.value + 1 < len(files)
+                                else 0
+                            )
                         self.save_progress()
                     except serial.SerialException as e:
                         print(f"Serial communication error: {e}")
