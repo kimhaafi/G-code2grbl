@@ -233,7 +233,7 @@ class GCodeRunner:
 
     def on_continue(self):
         self.load_progress()
-        self.on_play()
+        self.on_play(True)
 
     def update_loop_flag(self):
         self.loop_flag.value = self.loop_var.get()
