@@ -25,9 +25,9 @@ def stream_gcode(ser, gcode_path, max_commands=8):
             for part in parts:
                 if part.startswith("Bf:"):
                     buffer_info = part.split(":")[1].split(",")
-                    used_buffer_slots = int(buffer_info[0])
-                    print("Used buffer slots:", used_buffer_slots)
-                    return used_buffer_slots < max_commands
+                    available_buffer_slots = int(buffer_info[0])
+                    print("Available buffer slots:", available_buffer_slots)
+                    return available_buffer_slots > 3
         return False
 
     def wait_for_buffer(ser):
