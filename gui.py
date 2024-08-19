@@ -239,7 +239,7 @@ class GCodeRunner:
         self.status_label["text"] = message
 
     def on_finished(self):
-        if self.loop_flag.value:
+        if self.loop_flag.value and not self.stop_event.is_set():
             self.on_play()
         else:
             self.play_button["state"] = "normal"
