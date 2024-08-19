@@ -260,7 +260,11 @@ class GCodeRunner:
                     elif message[0] == "finished":
                         self.on_finished()
                     elif message[0] == "finished_file":
-                        self.current_index.value += 1
+                        self.current_index.value += (
+                            1
+                            if self.current_index.value < self.file_list.size() - 1
+                            else 0
+                        )
                         self.save_progress()
                 except queue.Empty:
                     break
