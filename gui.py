@@ -44,7 +44,8 @@ class GCodeProcessor(multiprocessing.Process):
                 try:
                     file = self.file_queue.get(timeout=1)
                     self.status_queue.put(("status", f"Processing: {file}"))
-                    stream_gcode(ser, file, int(os.getenv("MAX_COMMANDS")))
+                    stream_gcode(ser, file)
+                    self.status_queue.put(("finished_file", None))
                     self.file_queue.task_done()
                 except queue.Empty:
                     if self.loop_flag.value and not self.file_queue.empty():
@@ -142,7 +143,7 @@ class GCodeRunner:
         self.process_queue()
 
         # Check for saved progress
-        self.check_saved_progress()
+        self.load_files()
 
     def refresh_ports(self):
         ports = [
@@ -243,7 +244,7 @@ class GCodeRunner:
         self.play_button["state"] = "normal"
         self.stop_button["state"] = "disabled"
         self.status_label["text"] = "Status: Idle"
-        self.check_saved_progress()
+        self.save_progress()
         if self.processor:
             self.processor.join()
             self.processor = None
@@ -257,6 +258,9 @@ class GCodeRunner:
                         self.update_status(message[1])
                     elif message[0] == "finished":
                         self.on_finished()
+                    elif message[0] == "finished_file":
+                        self.current_index.value += 1
+                        self.save_progress()
                 except queue.Empty:
                     break
         finally:
@@ -275,6 +279,10 @@ class GCodeRunner:
             progress = json.load(f)
 
         self.current_index.value = progress["current_index"]
+
+    def load_files(self):
+        with open(PROGRESS_FILE, "r") as f:
+            progress = json.load(f)
 
         for file in progress["files"]:
             self.file_list.insert(tk.END, file)
