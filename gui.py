@@ -24,7 +24,6 @@ class GCodeProcessor(multiprocessing.Process):
         file_queue,
         status_queue,
         stop_event,
-        loop_flag,
     ):
         super().__init__()
         self.port = port
@@ -32,7 +31,6 @@ class GCodeProcessor(multiprocessing.Process):
         self.file_queue = file_queue
         self.status_queue = status_queue
         self.stop_event = stop_event
-        self.loop_flag = loop_flag
 
     def run(self):
         ser = None
@@ -48,7 +46,7 @@ class GCodeProcessor(multiprocessing.Process):
                     self.status_queue.put(("finished_file", None))
                     self.file_queue.task_done()
                 except queue.Empty:
-                    if self.loop_flag.value and not self.file_queue.empty():
+                    if not self.file_queue.empty():
                         continue
                     elif self.file_queue.empty():
                         break
@@ -216,7 +214,6 @@ class GCodeRunner:
             self.file_queue,
             self.status_queue,
             self.stop_event,
-            self.loop_flag,
         )
         self.processor.start()
 
@@ -242,13 +239,17 @@ class GCodeRunner:
         self.status_label["text"] = message
 
     def on_finished(self):
-        self.play_button["state"] = "normal"
-        self.stop_button["state"] = "disabled"
-        self.status_label["text"] = "Status: Idle"
+        if self.loop_flag.value:
+            self.on_play()
+        else:
+            self.play_button["state"] = "normal"
+            self.stop_button["state"] = "disabled"
+            self.continue_button["state"] = "disabled"
+            self.status_label["text"] = "Status: Idle"
 
-        if self.processor:
-            self.processor.join()
-            self.processor = None
+            if self.processor:
+                self.processor.join()
+                self.processor = None
 
     def process_queue(self):
         try:
