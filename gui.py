@@ -276,6 +276,9 @@ class GCodeRunner:
 
         self.current_index.value = progress["current_index"]
 
+        for file in progress["files"]:
+            self.file_list.insert(tk.END, file)
+
     def check_saved_progress(self):
         if os.path.exists(PROGRESS_FILE):
             self.continue_button["state"] = "normal"
