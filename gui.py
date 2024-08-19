@@ -245,6 +245,9 @@ class GCodeRunner:
         self.play_button["state"] = "normal"
         self.stop_button["state"] = "disabled"
         self.status_label["text"] = "Status: Idle"
+        self.current_index.value += (
+            1 if self.current_index.value < self.file_list.size() - 1 else 0
+        )
         self.save_progress()
         if self.processor:
             self.processor.join()
