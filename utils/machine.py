@@ -9,7 +9,7 @@ def stream_gcode(ser, gcode_path, max_commands=8):
         return string
 
     def remove_eol_chars(string):
-        return string.strip()
+        return string.strip().replace("%", "")
 
     def send_wake_up(ser):
         ser.write(b"\r\n\r\n")
@@ -26,7 +26,7 @@ def stream_gcode(ser, gcode_path, max_commands=8):
                 if part.startswith("Bf:"):
                     buffer_info = part.split(":")[1].split(",")
                     available_buffer_slots = int(buffer_info[0])
-                    print("Available buffer slots:", available_buffer_slots)
+                    # print("Available buffer slots:", available_buffer_slots)
                     return available_buffer_slots > 3
         return False
 
@@ -50,7 +50,7 @@ def stream_gcode(ser, gcode_path, max_commands=8):
         for line in file:
             cleaned_line = remove_eol_chars(remove_comment(line))
             if cleaned_line:
-                print("sending:", cleaned_line)
+                # print("sending:", cleaned_line)
                 send_command(ser, cleaned_line)
                 wait_for_buffer(ser)
 
