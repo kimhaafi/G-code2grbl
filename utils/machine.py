@@ -20,7 +20,6 @@ def stream_gcode(ser, gcode_path, max_commands=8):
         ser.reset_input_buffer()
         ser.write(b"?")
         grbl_out = ser.readline().strip().decode("utf-8")
-        print(grbl_out)
         if grbl_out.startswith("<"):
             parts = grbl_out.split("|")
             for part in parts:
@@ -30,6 +29,8 @@ def stream_gcode(ser, gcode_path, max_commands=8):
                     available_buffer_slots = int(buffer_info[1])
                     print(f"Available buffer slots: {available_buffer_slots}")
                     return available_buffer_slots > 0
+                else:
+                    return True
         return False
 
     def wait_for_buffer(ser):
