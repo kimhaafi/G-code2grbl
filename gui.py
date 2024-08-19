@@ -6,61 +6,13 @@ from utils.machine import stream_gcode
 from dotenv import load_dotenv
 import tkinter as tk
 from tkinter import ttk, filedialog
-import multiprocessing
+import threading
 import queue
 import json
-import time
 
 load_dotenv()
 
 PROGRESS_FILE = "gcode_progress.json"
-
-
-class GCodeProcessor(multiprocessing.Process):
-    def __init__(
-        self,
-        port,
-        baud_rate,
-        file_queue,
-        status_queue,
-        stop_event,
-        loop_flag,
-        current_file_index,
-    ):
-        super().__init__()
-        self.port = port
-        self.baud_rate = baud_rate
-        self.file_queue = file_queue
-        self.status_queue = status_queue
-        self.stop_event = stop_event
-        self.loop_flag = loop_flag
-        self.current_file_index = current_file_index
-
-    def run(self):
-        ser = None
-        try:
-            ser = serial.Serial(self.port, self.baud_rate)
-            self.status_queue.put(("status", f"Connected to {self.port}"))
-
-            while not self.stop_event.is_set():
-                try:
-                    file, index = self.file_queue.get(timeout=1)
-                    self.current_file_index.value = index
-                    self.status_queue.put(("status", f"Processing: {file}"))
-                    self.status_queue.put(("save_progress", index))
-                    stream_gcode(ser, file)
-                    self.file_queue.task_done()
-                except queue.Empty:
-                    if self.loop_flag.value and not self.file_queue.empty():
-                        continue
-                    elif self.file_queue.empty():
-                        break
-        except serial.SerialException as e:
-            self.status_queue.put(("status", f"Error: {str(e)}"))
-        finally:
-            if ser:
-                ser.close()
-            self.status_queue.put(("finished", None))
 
 
 class GCodeRunner:
@@ -69,12 +21,12 @@ class GCodeRunner:
         master.title("G-code Runner")
         master.geometry("500x400")
 
-        self.file_queue = multiprocessing.JoinableQueue()
-        self.status_queue = multiprocessing.Queue()
-        self.stop_event = multiprocessing.Event()
-        self.loop_flag = multiprocessing.Value("b", False)
-        self.processor = None
-        self.current_file_index = multiprocessing.Value("i", 0)
+        self.ser = None
+        self.gcode_thread = None
+        self.running = False
+        self.stop_requested = False
+        self.queue = queue.Queue()
+        self.current_file_index = 0
 
         # Port selection
         ttk.Label(master, text="Select Port:").pack(pady=5)
@@ -121,7 +73,6 @@ class GCodeRunner:
 
         self.stop_button = ttk.Button(control_frame, text="Stop", command=self.on_stop)
         self.stop_button.pack(side=tk.LEFT, padx=5)
-        self.stop_button["state"] = "disabled"
 
         self.continue_button = ttk.Button(
             control_frame, text="Continue", command=self.on_continue
@@ -131,10 +82,7 @@ class GCodeRunner:
 
         self.loop_var = tk.BooleanVar()
         self.loop_checkbox = ttk.Checkbutton(
-            control_frame,
-            text="Loop",
-            variable=self.loop_var,
-            command=self.update_loop_flag,
+            control_frame, text="Loop", variable=self.loop_var
         )
         self.loop_checkbox.pack(side=tk.LEFT, padx=5)
 
@@ -155,7 +103,7 @@ class GCodeRunner:
         ]
         self.port_combo["values"] = ports
         if ports:
-            self.port_combo.set(ports[int(os.getenv("PORT")) - 1])
+            self.port_combo.set(ports[0])
 
     def add_file(self):
         file_paths = filedialog.askopenfilenames(
@@ -188,51 +136,72 @@ class GCodeRunner:
                 self.file_list.selection_set(index + 1)
 
     def on_play(self):
-        port = self.port_combo.get().split(" - ")[0]
+        if not self.ser:
+            port = self.port_combo.get().split(" - ")[0]
+            try:
+                self.ser = serial.Serial(port, int(os.getenv("BAUD_RATE")))
+                self.queue.put(("status", f"Connected to {port}"))
+            except serial.SerialException as e:
+                self.queue.put(("status", f"Error: {str(e)}"))
+                return
+
         files = self.file_list.get(0, tk.END)
         if not files:
-            self.status_label["text"] = "Status: No files to process"
+            self.queue.put(("status", "No files to process"))
             return
 
-        # Clear the queue before adding new files
-        while not self.file_queue.empty():
-            try:
-                self.file_queue.get_nowait()
-            except queue.Empty:
-                break
-
-        for i, file in enumerate(files[self.current_file_index.value :]):
-            self.file_queue.put((file, self.current_file_index.value + i))
-
-        self.stop_event.clear()
-        self.processor = GCodeProcessor(
-            port,
-            int(os.getenv("BAUD_RATE")),
-            self.file_queue,
-            self.status_queue,
-            self.stop_event,
-            self.loop_flag,
-            self.current_file_index,
-        )
-        self.processor.start()
-
+        self.running = True
+        self.stop_requested = False
+        self.current_file_index = 0
+        self.gcode_thread = threading.Thread(target=self.process_files, args=(files,))
+        self.gcode_thread.start()
         self.play_button["state"] = "disabled"
         self.stop_button["state"] = "normal"
         self.continue_button["state"] = "disabled"
 
     def on_stop(self):
-        if self.processor:
-            self.stop_event.set()
-            self.status_label["text"] = (
-                "Status: Stop requested. Waiting for current file to finish..."
-            )
+        self.stop_requested = True
+        self.queue.put(
+            ("status", "Stop requested. Waiting for current file to finish...")
+        )
 
     def on_continue(self):
-        self.load_progress()
-        self.on_play()
+        if not self.ser:
+            port = self.port_combo.get().split(" - ")[0]
+            try:
+                self.ser = serial.Serial(port, int(os.getenv("BAUD_RATE")))
+                self.queue.put(("status", f"Connected to {port}"))
+            except serial.SerialException as e:
+                self.queue.put(("status", f"Error: {str(e)}"))
+                return
 
-    def update_loop_flag(self):
-        self.loop_flag.value = self.loop_var.get()
+        files = self.file_list.get(0, tk.END)
+        if not files:
+            self.queue.put(("status", "No files to process"))
+            return
+
+        self.running = True
+        self.stop_requested = False
+        self.gcode_thread = threading.Thread(target=self.process_files, args=(files,))
+        self.gcode_thread.start()
+        self.play_button["state"] = "disabled"
+        self.stop_button["state"] = "normal"
+        self.continue_button["state"] = "disabled"
+
+    def process_files(self, files):
+        while self.running and not self.stop_requested:
+            for i in range(self.current_file_index, len(files)):
+                self.current_file_index = i
+                if self.stop_requested:
+                    self.save_progress()
+                    break
+                file = files[i]
+                self.queue.put(("status", f"Processing: {file}"))
+                stream_gcode(self.ser, file)
+            if not self.loop_var.get():
+                break
+            self.current_file_index = 0
+        self.queue.put(("finished", None))
 
     def update_status(self, message):
         self.status_label["text"] = message
@@ -241,31 +210,28 @@ class GCodeRunner:
         self.play_button["state"] = "normal"
         self.stop_button["state"] = "disabled"
         self.status_label["text"] = "Status: Idle"
-
-        if self.processor:
-            self.processor.join()
-            self.processor = None
+        self.running = False
+        self.stop_requested = False
+        self.check_saved_progress()
 
     def process_queue(self):
         try:
             while True:
-                try:
-                    message = self.status_queue.get_nowait()
-                    if message[0] == "status":
-                        self.update_status(message[1])
-                    elif message[0] == "finished":
-                        self.on_finished()
-                    elif message[0] == "save_progress":
-                        self.save_progress(message[1])
-                except queue.Empty:
-                    break
+                message = self.queue.get_nowait()
+                if message[0] == "status":
+                    self.update_status(message[1])
+                elif message[0] == "finished":
+                    self.on_finished()
+                self.queue.task_done()
+        except queue.Empty:
+            pass
         finally:
             self.master.after(100, self.process_queue)
 
-    def save_progress(self, current_index):
+    def save_progress(self):
         progress = {
             "files": list(self.file_list.get(0, tk.END)),
-            "current_index": current_index,
+            "current_index": self.current_file_index,
         }
         with open(PROGRESS_FILE, "w") as f:
             json.dump(progress, f)
@@ -276,7 +242,7 @@ class GCodeRunner:
         self.file_list.delete(0, tk.END)
         for file in progress["files"]:
             self.file_list.insert(tk.END, file)
-        self.current_file_index.value = progress["current_index"]
+        self.current_file_index = progress["current_index"]
 
     def check_saved_progress(self):
         if os.path.exists(PROGRESS_FILE):
@@ -287,7 +253,6 @@ class GCodeRunner:
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()  # Necessary for Windows
     root = tk.Tk()
     app = GCodeRunner(root)
     root.mainloop()
