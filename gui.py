@@ -244,7 +244,7 @@ class GCodeRunner:
         else:
             self.play_button["state"] = "normal"
             self.stop_button["state"] = "disabled"
-            self.continue_button["state"] = "disabled"
+            self.continue_button["state"] = "normal"
             self.status_label["text"] = "Status: Idle"
 
             if self.processor:
