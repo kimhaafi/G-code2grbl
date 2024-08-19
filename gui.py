@@ -18,7 +18,14 @@ PROGRESS_FILE = "gcode_progress.json"
 
 class GCodeProcessor(multiprocessing.Process):
     def __init__(
-        self, port, baud_rate, file_queue, status_queue, stop_event, loop_flag
+        self,
+        port,
+        baud_rate,
+        file_queue,
+        status_queue,
+        stop_event,
+        loop_flag,
+        current_file_index,
     ):
         super().__init__()
         self.port = port
@@ -27,6 +34,7 @@ class GCodeProcessor(multiprocessing.Process):
         self.status_queue = status_queue
         self.stop_event = stop_event
         self.loop_flag = loop_flag
+        self.current_file_index = current_file_index
 
     def run(self):
         ser = None
@@ -36,8 +44,10 @@ class GCodeProcessor(multiprocessing.Process):
 
             while not self.stop_event.is_set():
                 try:
-                    file = self.file_queue.get(timeout=1)
+                    file, index = self.file_queue.get(timeout=1)
+                    self.current_file_index.value = index
                     self.status_queue.put(("status", f"Processing: {file}"))
+                    self.status_queue.put(("save_progress", index))
                     stream_gcode(ser, file)
                     self.file_queue.task_done()
                 except queue.Empty:
@@ -64,6 +74,7 @@ class GCodeRunner:
         self.stop_event = multiprocessing.Event()
         self.loop_flag = multiprocessing.Value("b", False)
         self.processor = None
+        self.current_file_index = multiprocessing.Value("i", 0)
 
         # Port selection
         ttk.Label(master, text="Select Port:").pack(pady=5)
@@ -190,8 +201,8 @@ class GCodeRunner:
             except queue.Empty:
                 break
 
-        for file in files:
-            self.file_queue.put(file)
+        for i, file in enumerate(files[self.current_file_index.value :]):
+            self.file_queue.put((file, self.current_file_index.value + i))
 
         self.stop_event.clear()
         self.processor = GCodeProcessor(
@@ -201,6 +212,7 @@ class GCodeRunner:
             self.status_queue,
             self.stop_event,
             self.loop_flag,
+            self.current_file_index,
         )
         self.processor.start()
 
@@ -229,7 +241,8 @@ class GCodeRunner:
         self.play_button["state"] = "normal"
         self.stop_button["state"] = "disabled"
         self.status_label["text"] = "Status: Idle"
-        self.save_progress()
+        self.current_file_index.value = 0
+        self.save_progress(0)
         if self.processor:
             self.processor.join()
             self.processor = None
@@ -243,15 +256,17 @@ class GCodeRunner:
                         self.update_status(message[1])
                     elif message[0] == "finished":
                         self.on_finished()
+                    elif message[0] == "save_progress":
+                        self.save_progress(message[1])
                 except queue.Empty:
                     break
         finally:
             self.master.after(100, self.process_queue)
 
-    def save_progress(self):
+    def save_progress(self, current_index):
         progress = {
             "files": list(self.file_list.get(0, tk.END)),
-            "current_index": 0,  # Reset to 0 as we're not tracking the current file in the GUI
+            "current_index": current_index,
         }
         with open(PROGRESS_FILE, "w") as f:
             json.dump(progress, f)
@@ -262,6 +277,7 @@ class GCodeRunner:
         self.file_list.delete(0, tk.END)
         for file in progress["files"]:
             self.file_list.insert(tk.END, file)
+        self.current_file_index.value = progress["current_index"]
 
     def check_saved_progress(self):
         if os.path.exists(PROGRESS_FILE):
