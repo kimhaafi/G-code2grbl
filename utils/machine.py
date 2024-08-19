@@ -2,7 +2,7 @@ import time
 from threading import Event
 
 
-def stream_gcode(ser, gcode_path, max_commands=8):
+def stream_gcode(ser, gcode_path):
     def remove_comment(string):
         if ";" in string:
             return string[: string.index(";")]
