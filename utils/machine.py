@@ -27,6 +27,7 @@ def stream_gcode(ser, gcode_path, max_commands=8):
                     print(grbl_out)
                     buffer_info = part.split(":")[1].split(",")
                     available_buffer_slots = int(buffer_info[1])
+                    print(f"Available buffer slots: {available_buffer_slots}")
                     return available_buffer_slots > 0
         return False
 
@@ -46,23 +47,11 @@ def stream_gcode(ser, gcode_path, max_commands=8):
 
     with open(gcode_path, "r") as file:
         send_wake_up(ser)
-        command_queue = []
 
         for line in file:
             cleaned_line = remove_eol_chars(remove_comment(line))
             if cleaned_line:
-                while len(command_queue) >= max_commands:
-                    wait_for_buffer(ser)
-                    send_command(ser, command_queue.pop(0))
-
-                if cleaned_line.startswith("G") or "$H" in cleaned_line:
-                    command_queue.append(cleaned_line)
-                else:
-                    send_command(ser, cleaned_line)
-
-        # Send any remaining commands in the queue
-        while command_queue:
-            wait_for_buffer(ser)
-            send_command(ser, command_queue.pop(0))
+                send_command(ser, cleaned_line)
+                wait_for_buffer(ser)
 
         print("End of gcode")
