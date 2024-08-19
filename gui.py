@@ -144,6 +144,7 @@ class GCodeRunner:
 
         # Check for saved progress
         self.load_files()
+        self.check_saved_progress()
 
     def refresh_ports(self):
         ports = [
