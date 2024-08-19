@@ -54,4 +54,4 @@ def stream_gcode(ser, gcode_path, max_commands=8):
                 send_command(ser, cleaned_line)
                 wait_for_buffer(ser)
 
-        print("End of gcode")
+        print("End of gcode file reached: " + gcode_path)
