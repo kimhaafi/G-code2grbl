@@ -77,7 +77,7 @@ class GCodeRunner:
                     current_file.value = file
                     print(f"Processing: {file}")
                     try:
-                        stream_gcode(ser, file, interrupt_event)
+                        stream_gcode(ser, file)
                         print(f"Finished processing: {file}")
                         with current_file_index.get_lock():
                             current_file_index.value = (
