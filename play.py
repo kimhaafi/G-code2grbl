@@ -60,6 +60,12 @@ class GCodeRunner:
         stop_requested,
         current_file,
     ):
+        def handle_interrupt(signum, frame):
+            print("Interrupt received. Stopping...")
+
+        signal.signal(signal.SIGINT, handle_interrupt)
+        signal.signal(signal.SIGTERM, handle_interrupt)
+
         ser = None
         try:
             ser = serial.Serial(port, baud_rate)
@@ -71,7 +77,7 @@ class GCodeRunner:
                     current_file.value = file
                     print(f"Processing: {file}")
                     try:
-                        stream_gcode(ser, file)
+                        stream_gcode(ser, file, interrupt_event)
                         print(f"Finished processing: {file}")
                         with current_file_index.get_lock():
                             current_file_index.value = (
@@ -115,12 +121,13 @@ class GCodeRunner:
 
     def stop_processing(self):
         self.stop_requested.value = True
-        if self.gcode_process:
-            self.gcode_process.join()
+        print("Stop requested. Waiting for current file to finish...")
+        self.gcode_process.join()
         self.save_progress()
+        print(f"Processing stopped. Last file processed: {self.current_file.value}")
 
     def signal_handler(self, signum, frame):
-        print("SIGTERM received. Stopping after current file completion...")
+        print("Signal received. Stopping after current file completion...")
         self.stop_processing()
 
 
@@ -133,20 +140,17 @@ def main():
         return
 
     # Set up signal handler for graceful stopping
+    signal.signal(signal.SIGINT, runner.signal_handler)
     signal.signal(signal.SIGTERM, runner.signal_handler)
 
     try:
         runner.start_processing()
         while runner.running.value and not runner.stop_requested.value:
             time.sleep(1)
-    except KeyboardInterrupt:
-        print("Keyboard interrupt received. Stopping...")
-        runner.stop_processing()
     except Exception as e:
         print(f"An error occurred: {e}")
 
-    if runner.stop_requested.value:
-        print(f"Stopped. Last file processed: {runner.current_file.value}")
+    print("Program exited.")
 
 
 if __name__ == "__main__":
